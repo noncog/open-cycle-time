@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.24)
-project(open-cycle-time)
+project(open-cycle-time
+        VERSION 0.0.1
+        DESCRIPTION "A cross-platform video analysis tool for generating cycle times of manufacturing processes."
+        HOMEPAGE_URL "https://github.com/noncog/open-cycle-time"
+        LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 11)
 

@@ -25,8 +25,15 @@ FetchContent_Declare(
         GIT_TAG 3.3.8
         GIT_PROGRESS TRUE)
 
+FetchContent_Declare(
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad
+        GIT_TAG v0.1.36
+        GIT_PROGRESS TRUE)
+
 set(PROJECT_DEPENDENCIES
-        glfw)
+        glfw
+        glad)
 
 FetchContent_MakeAvailable(${PROJECT_DEPENDENCIES})
 

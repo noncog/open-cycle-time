@@ -11,4 +11,28 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_executable(open-cycle-time main.cpp)
+include(FetchContent)
+
+set(FETCHCONTENT_QUIET FALSE)
+
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.3.8
+        GIT_PROGRESS TRUE)
+
+set(PROJECT_DEPENDENCIES
+        glfw)
+
+FetchContent_MakeAvailable(${PROJECT_DEPENDENCIES})
+
+set(PROJECT_SOURCES
+        main.cpp)
+
+add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
+
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_DEPENDENCIES})

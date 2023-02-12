@@ -74,10 +74,13 @@ target_include_directories(implot PUBLIC
         ${imgui_SOURCE_DIR})
 
 set(PROJECT_SOURCES
-        main.cpp)
+        main.cpp
+        src/open_cycle_time.cpp
+        src/gui_context.cpp)
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_DEPENDENCIES})
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 include(CTest)
 add_subdirectory(test)

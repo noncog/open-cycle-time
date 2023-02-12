@@ -4,6 +4,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
+#include <imgui.h>
 #include <string>
 
 namespace oct {
@@ -16,11 +17,19 @@ public:
     bool isActive() const;
 
 private:
+    const char* glsl_version = "#version 410";
     GLFWwindow* window;
+    ImGuiIO& io;
+    int display_w;
+    int display_h;
+    ImVec4 clear_color = ImVec4(0.29f, 0.29f, 0.38f, 0.4f);
+    static void errorCallbackGLFW(int error, const char* description);
     static GLFWwindow* initialiseGLFW(const std::string& window_title,
                                       unsigned short width,
                                       unsigned short height);
-    static void errorCallbackGLFW(int error, const char* description);
+    ImGuiIO& initialiseIMGUI();
+    void buildGUI();
+    void renderGUI();
 };
 } // namespace oct
 

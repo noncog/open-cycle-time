@@ -37,10 +37,17 @@ FetchContent_Declare(
         GIT_TAG v1.89.2
         GIT_PROGRESS TRUE)
 
+FetchContent_Declare(
+        implot
+        GIT_REPOSITORY https://github.com/epezent/implot.git
+        GIT_TAG d87512353495e7760e7fda7566a05beef7627d8f
+        GIT_PROGRESS TRUE)
+
 set(PROJECT_DEPENDENCIES
         glfw
         glad
-        imgui)
+        imgui
+        implot)
 
 FetchContent_MakeAvailable(${PROJECT_DEPENDENCIES})
 
@@ -53,6 +60,15 @@ add_library(imgui STATIC
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp)
 
 target_include_directories(imgui INTERFACE
+        ${imgui_SOURCE_DIR})
+
+add_library(implot STATIC
+        ${implot_SOURCE_DIR}/implot.cpp
+        ${implot_SOURCE_DIR}/implot_demo.cpp
+        ${implot_SOURCE_DIR}/implot_items.cpp)
+
+target_include_directories(implot PUBLIC
+        ${implot_SOURCE_DIR}
         ${imgui_SOURCE_DIR})
 
 set(PROJECT_SOURCES

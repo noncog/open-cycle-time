@@ -26,16 +26,34 @@ FetchContent_Declare(
         GIT_PROGRESS TRUE)
 
 FetchContent_Declare(
-         glad
-         GIT_REPOSITORY https://github.com/Dav1dde/glad
-         GIT_TAG v0.1.36
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+        GIT_TAG v0.1.36
+        GIT_PROGRESS TRUE)
+
+FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.89.2
         GIT_PROGRESS TRUE)
 
 set(PROJECT_DEPENDENCIES
         glfw
-        glad)
+        glad
+        imgui)
 
 FetchContent_MakeAvailable(${PROJECT_DEPENDENCIES})
+
+# notice we reuse the name from the FetchContent_Declare
+add_library(imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_demo.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp)
+
+target_include_directories(imgui INTERFACE
+        ${imgui_SOURCE_DIR})
 
 set(PROJECT_SOURCES
         main.cpp)

@@ -11,3 +11,4 @@
 <a href="https://github.com/noncog/open-cycle-time/actions"><img src="https://github.com/noncog/open-cycle-time/actions/workflows/build.yml/badge.svg" /></a>
 <a href="https://github.com/noncog/open-cycle-time/blob/main/LICENSE"><img src="https://img.shields.io/github/license/noncog/open-cycle-time?color=blue&style=flat-square" /></a>
 </p>
+<p align="center"><img src="./docs/images/open-cycle-time.svg" height="250"></p>

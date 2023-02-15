@@ -47,11 +47,17 @@ FetchContent_Declare(
         GIT_TAG d87512353495e7760e7fda7566a05beef7627d8f
         GIT_PROGRESS TRUE)
 
+FetchContent_Declare(
+        tinyfiledialogs
+        GIT_REPOSITORY https://git.code.sf.net/p/tinyfiledialogs/code
+        GIT_PROGRESS TRUE)
+
 set(PROJECT_DEPENDENCIES
         glfw
         glad
         imgui
-        implot)
+        implot
+        tinyfiledialogs)
 
 FetchContent_MakeAvailable(${PROJECT_DEPENDENCIES})
 
@@ -78,6 +84,11 @@ add_library(implot STATIC
 target_include_directories(implot PUBLIC
         ${implot_SOURCE_DIR}
         ${imgui_SOURCE_DIR})
+
+add_library(tinyfiledialogs STATIC
+        ${tinyfiledialogs_SOURCE_DIR}/tinyfiledialogs.c)
+
+target_include_directories(tinyfiledialogs PUBLIC ${tinyfiledialogs_SOURCE_DIR})
 
 set(PROJECT_SOURCES
         main.cpp

@@ -23,6 +23,7 @@ private:
     int display_w;
     int display_h;
     ImVec4 clear_color = ImVec4(0.29f, 0.29f, 0.38f, 0.4f);
+    std::string file_name;
     static void errorCallbackGLFW(int error, const char* description);
     static GLFWwindow* initialiseGLFW(const std::string& window_title,
                                       unsigned short width,

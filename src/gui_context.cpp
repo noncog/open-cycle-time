@@ -3,6 +3,7 @@
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 #include <iostream>
+#include <tinyfiledialogs.h>
 
 namespace oct {
 GUIContext::GUIContext(const std::string& window_title, unsigned short width,
@@ -143,6 +144,19 @@ void GUIContext::buildGUI() {
     // Main menu bar
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Open", nullptr)) {
+                char const* lTheOpenFileName;
+                char const* lFilterPatterns[3] = {"*.mp4", "*.avi", "*.mov"};
+                lTheOpenFileName =
+                    tinyfd_openFileDialog("Select a Video File", "", 3,
+                                          lFilterPatterns, "Video files", 0);
+                if (!lTheOpenFileName) {
+                    tinyfd_messageBox("Error", "File name is empty.", "ok",
+                                      "error", 0);
+                } else {
+                    file_name = lTheOpenFileName;
+                }
+            }
             if (ImGui::MenuItem("Quit", nullptr)) {
                 glfwSetWindowShouldClose(window, 1);
             }

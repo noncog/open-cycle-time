@@ -5,7 +5,9 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <imgui.h>
+#include <opencv2/opencv.hpp>
 #include <string>
+#include <vector>
 
 namespace oct {
 class GUIContext {
@@ -24,6 +26,14 @@ private:
     int display_h;
     ImVec4 clear_color = ImVec4(0.29f, 0.29f, 0.38f, 0.4f);
     std::string file_name;
+    bool typeCheck();
+    cv::Mat frame;
+    std::vector<cv::Mat> frames;
+    int frame_rate;
+    int first_frame;
+    int last_frame;
+    int max_frame;
+    float video_length;
     static void errorCallbackGLFW(int error, const char* description);
     static GLFWwindow* initialiseGLFW(const std::string& window_title,
                                       unsigned short width,

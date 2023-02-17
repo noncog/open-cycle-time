@@ -17,7 +17,13 @@ GUIContext::GUIContext(const std::string& window_title, unsigned short width,
     , first_frame{1}
     , last_frame{0}
     , max_frame{0}
-    , video_length{0.0} {}
+    , video_length{0.0}
+    , texture{static_cast<GLuint>(-1)}
+    , texture_current{false}
+    , viewer_width{0}
+    , viewer_height{0}
+    , current_frame{1}
+    , prev_frame{0} {}
 GUIContext::~GUIContext() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -183,6 +189,8 @@ void GUIContext::buildGUI() {
     static bool load_full = false;
     static bool load_portion = false;
     static bool ready_load_portion = false;
+    static bool show_frame = false;
+    static bool disable_all = true;
 
     // Main menu bar
     if (ImGui::BeginMainMenuBar()) {
@@ -199,6 +207,8 @@ void GUIContext::buildGUI() {
                 load_full = false;
                 load_portion = false;
                 ready_load_portion = false;
+                show_frame = false;
+                disable_all = true;
                 file_name = "";
                 frames.clear();
                 frame_rate = 0;
@@ -206,6 +216,11 @@ void GUIContext::buildGUI() {
                 last_frame = 0;
                 max_frame = 0;
                 video_length = 0.0;
+                texture_current = false;
+                viewer_width = 0;
+                viewer_height = 0;
+                current_frame = 1;
+                prev_frame = 0;
 
                 char const* lTheOpenFileName;
                 char const* lFilterPatterns[3] = {"*.mp4", "*.avi", "*.mov"};
@@ -259,128 +274,220 @@ void GUIContext::buildGUI() {
     ImGui::SetNextWindowSize(use_work_area ? viewport->WorkSize
                                            : viewport->Size);
 
-    if (ImGui::Begin("Open Cycle Time - Main Window", &show_main_window,
-                     flags)) {
-        if (show_load_dialog) {
-            if (show_load_error) {
-                ImGui::OpenPopup("Error:");
-                ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-                ImGui::SetNextWindowPos(center, ImGuiCond_Appearing,
-                                        ImVec2(0.5f, 0.5f));
-                if (ImGui::BeginPopupModal("Error:", NULL,
-                                           ImGuiWindowFlags_AlwaysAutoResize)) {
-                    ImGui::Text("The selected file cannot be opened.");
-                    ImGui::Separator();
-                    // ImGui::PopStyleVar();
-                    if (ImGui::Button("OK", ImVec2(120, 0))) {
-                        ImGui::CloseCurrentPopup();
-                        show_load_dialog = false;
-                    }
-                    ImGui::EndPopup();
+    ImGui::Begin("Main Window", &show_main_window, flags);
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    if (show_load_dialog) {
+        if (show_load_error) {
+            ImGui::OpenPopup("Error:");
+            ImGui::SetNextWindowPos(center, ImGuiCond_Appearing,
+                                    ImVec2(0.5f, 0.5f));
+            if (ImGui::BeginPopupModal("Error:", NULL,
+                                       ImGuiWindowFlags_AlwaysAutoResize)) {
+                ImGui::Text("The selected file cannot be opened.");
+                ImGui::Separator();
+                // ImGui::PopStyleVar();
+                if (ImGui::Button("OK", ImVec2(120, 0))) {
+                    ImGui::CloseCurrentPopup();
+                    show_load_dialog = false;
                 }
+                ImGui::EndPopup();
             }
-            if (!skip_load_file) {
-                cv::VideoCapture frame_loader(file_name);
-                if (right_type && frame_loader.isOpened()) {
-                    if (!skip_get_size) {
-                        frame_rate = frame_loader.get(cv::CAP_PROP_FPS);
-                        while (true) {
-                            frame_loader >> frame;
-                            if (frame.empty()) {
-                                break;
-                            }
-                            last_frame++;
+        }
+        if (!skip_load_file) {
+            cv::VideoCapture frame_loader(file_name);
+            if (right_type && frame_loader.isOpened()) {
+                if (!skip_get_size) {
+                    frame_rate = frame_loader.get(cv::CAP_PROP_FPS);
+                    while (true) {
+                        frame_loader >> frame;
+                        if (frame.empty()) {
+                            break;
                         }
-                        max_frame = last_frame;
-                        skip_get_size = true;
-                        show_video_size = true;
+                        last_frame++;
                     }
-                    if (show_video_size) {
-                        ImGui::OpenPopup("Video File Info:");
-                        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-                        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing,
-                                                ImVec2(0.5f, 0.5f));
-                        if (ImGui::BeginPopupModal(
-                                "Video File Info:", NULL,
-                                ImGuiWindowFlags_AlwaysAutoResize)) {
-                            video_length = last_frame / frame_rate;
-                            ImGui::Text(
-                                "The selected file contains %d frames and is "
-                                "%.02f seconds long.\n\nDo you want to load "
-                                "the "
-                                "entire file or just a portion?",
-                                last_frame, video_length);
-                            ImGui::Separator();
-                            if (ImGui::Button("Load Portion", ImVec2(120, 0))) {
-                                show_video_size = false;
-                                load_portion = true;
-                                ImGui::CloseCurrentPopup();
-                            }
-                            ImGui::SameLine();
-                            if (ImGui::Button("Load All", ImVec2(120, 0))) {
-                                show_video_size = false;
-                                load_full = true;
-                                ImGui::CloseCurrentPopup();
-                            }
-                            ImGui::EndPopup();
+                    max_frame = last_frame;
+                    skip_get_size = true;
+                    show_video_size = true;
+                }
+                if (show_video_size) {
+                    ImGui::OpenPopup("Video File Info:");
+                    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing,
+                                            ImVec2(0.5f, 0.5f));
+                    if (ImGui::BeginPopupModal(
+                            "Video File Info:", NULL,
+                            ImGuiWindowFlags_AlwaysAutoResize)) {
+                        video_length = last_frame / frame_rate;
+                        ImGui::Text(
+                            "The selected file contains %d frames and is "
+                            "%.02f seconds long.\n\nDo you want to load "
+                            "the "
+                            "entire file or just a portion?",
+                            last_frame, video_length);
+                        ImGui::Separator();
+                        if (ImGui::Button("Load Portion", ImVec2(120, 0))) {
+                            show_video_size = false;
+                            load_portion = true;
+                            ImGui::CloseCurrentPopup();
                         }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Load All", ImVec2(120, 0))) {
+                            show_video_size = false;
+                            load_full = true;
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndPopup();
                     }
-                    if (load_full) {
-                        last_frame = 0;
-                        while (true) {
+                }
+                if (load_full) {
+                    last_frame = 0;
+                    while (true) {
+                        frame_loader >> frame;
+                        if (frame.empty()) {
+                            break;
+                        }
+                        frames.push_back(frame);
+                        frame.release();
+                        last_frame++;
+                    }
+                    load_full = false;
+                    show_frame = true;
+                    disable_all = false;
+                }
+                if (load_portion) {
+                    ImGui::OpenPopup("Select Frames:");
+                    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing,
+                                            ImVec2(0.5f, 0.5f));
+                    if (ImGui::BeginPopupModal(
+                            "Select Frames:", NULL,
+                            ImGuiWindowFlags_AlwaysAutoResize)) {
+                        float selection_length =
+                            (last_frame - first_frame) / frame_rate;
+                        ImGui::DragIntRange2("", &first_frame, &last_frame, 1,
+                                             1, max_frame, "Start: %d",
+                                             "End: %d");
+                        if (ImGui::Button("Load", ImVec2(120, 0))) {
+                            ready_load_portion = true;
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::SameLine();
+                        ImGui::Text("%.02f secs", selection_length);
+                        ImGui::EndPopup();
+                    }
+                    if (ready_load_portion) {
+                        for (int i = 1; i <= last_frame; i++) {
+                            if (i < first_frame) {
+                                continue;
+                            }
                             frame_loader >> frame;
                             if (frame.empty()) {
                                 break;
                             }
                             frames.push_back(frame);
-                            last_frame++;
+                            frame.release();
                         }
-                        load_full = false;
+                        load_portion = false;
+                        show_frame = true;
+                        disable_all = false;
                     }
-                    if (load_portion) {
-                        ImGui::OpenPopup("Select Frames:");
-                        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-                        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing,
-                                                ImVec2(0.5f, 0.5f));
-                        if (ImGui::BeginPopupModal(
-                                "Select Frames:", NULL,
-                                ImGuiWindowFlags_AlwaysAutoResize)) {
-                            float selection_length =
-                                (last_frame - first_frame) / frame_rate;
-                            ImGui::DragInt("Start Frame", &first_frame, 0.5f, 1,
-                                           (max_frame - 1), "%d",
-                                           ImGuiSliderFlags_AlwaysClamp);
-                            ImGui::DragInt("End Frame", &last_frame, 0.5f, 2,
-                                           max_frame, "%d",
-                                           ImGuiSliderFlags_AlwaysClamp);
-                            if (ImGui::Button("Load", ImVec2(120, 0))) {
-                                ready_load_portion = true;
-                                ImGui::CloseCurrentPopup();
-                            }
-                            ImGui::SameLine();
-                            ImGui::Text("%.02f secs", selection_length);
-                            ImGui::EndPopup();
-                        }
-                        if (ready_load_portion) {
-                            for (int i = 1; i <= last_frame; i++) {
-                                if (i < first_frame) {
-                                    continue;
-                                }
-                                frame_loader >> frame;
-                                if (frame.empty()) {
-                                    break;
-                                }
-                                frames.push_back(frame);
-                            }
-                            load_portion = false;
-                        }
-                    }
-                } else {
-                    show_load_error = true;
-                    skip_load_file = true;
                 }
+            } else {
+                show_load_error = true;
+                skip_load_file = true;
             }
         }
+    }
+    ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+    if (ImGui::BeginTabBar("Main Tab Bar", tab_bar_flags)) {
+        if (ImGui::BeginTabItem("Generator")) {
+            ImGui::BeginChild("Viewer Window",
+                              ImVec2(0.0f, viewport->Size.y - 200));
+            if (show_frame) {
+                // If we don't have a texture, make it, otherwise just show it.
+                if (texture_current == false) {
+                    glGenTextures(1, &texture);
+                    glBindTexture(GL_TEXTURE_2D, texture);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                    GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                    GL_LINEAR);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                                 frames[current_frame].cols,
+                                 frames[current_frame].rows, 0, GL_RGB,
+                                 GL_UNSIGNED_BYTE, frames[current_frame].data);
+                    texture_current = true;
+                    prev_frame = current_frame;
+                }
+
+                if (current_frame != prev_frame) {
+                    texture_current = false;
+                }
+
+                ImVec2 window_start = ImGui::GetCursorScreenPos();
+                ImVec2 window_region = ImGui::GetContentRegionAvail();
+                ImVec2 window_max = ImVec2(window_region.x + window_start.x,
+                                           window_region.y + window_start.y);
+
+                // Find a max frame viewer size that honors video aspect ratio
+                if (viewer_width == 0 || viewer_height == 0) {
+                    int frame_width = frames[current_frame].cols;
+                    int frame_height = frames[current_frame].rows;
+                    float aspect_ratio =
+                        (float)frame_width / (float)frame_height;
+                    int minimum_width = 426;  // This is 240p video width.
+                    int minimum_height = 240; // This is 240p video height.
+
+                    if (frame_width > frame_height) {
+                        for (int i = minimum_width; i <= window_max.x; i++) {
+                            float result = i / aspect_ratio;
+                            if (result <= window_max.y
+                                && result == static_cast<int>(result)) {
+                                viewer_width = i;
+                                viewer_height = result;
+                            }
+                        }
+                    } else {
+                        for (int i = minimum_height; i <= window_max.y; i++) {
+                            float result = i * aspect_ratio;
+                            if (result <= window_max.x
+                                && result == static_cast<int>(result)) {
+                                viewer_height = i;
+                                viewer_width = result;
+                            }
+                        }
+                    }
+                }
+                int center_diff = (window_max.x - viewer_width) / 2;
+                ImGui::GetWindowDrawList()->AddImage(
+                    (void*)(intptr_t)texture,
+                    ImVec2((window_start.x + center_diff), window_start.y),
+                    ImVec2((viewer_width + center_diff), viewer_height),
+                    ImVec2(0, 0), ImVec2(1, 1));
+            }
+            ImGui::EndChild();
+            ImGui::Separator();
+            ImGui::BeginChild("Filler Window 1",
+                              ImVec2(viewport->Size.x / 3, 0.0f));
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("Controls Window",
+                              ImVec2(viewport->Size.x / 3, 0.0f));
+            if (disable_all) {
+                ImGui::BeginDisabled();
+            }
+            ImGui::SetNextItemWidth(viewport->Size.x / 3);
+            ImGui::SliderInt("##", &current_frame, 1, max_frame, "%d",
+                             ImGuiSliderFlags_None);
+            if (disable_all) {
+                ImGui::EndDisabled();
+            }
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("Filler Window 2",
+                              ImVec2(viewport->Size.x / 3, 0.0f));
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
     }
     ImGui::End();
 }

@@ -34,6 +34,12 @@ private:
     int last_frame;
     int max_frame;
     float video_length;
+    GLuint texture;
+    bool texture_current;
+    int viewer_width;
+    int viewer_height;
+    int current_frame;
+    int prev_frame;
     static void errorCallbackGLFW(int error, const char* description);
     static GLFWwindow* initialiseGLFW(const std::string& window_title,
                                       unsigned short width,

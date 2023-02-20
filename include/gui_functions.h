@@ -1,6 +1,7 @@
 #pragma once
 #ifndef OPEN_CYCLE_TIME_GUI_FUNCTIONS_H
 #define OPEN_CYCLE_TIME_GUI_FUNCTIONS_H
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <imgui.h>

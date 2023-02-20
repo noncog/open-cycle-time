@@ -93,7 +93,8 @@ target_include_directories(tinyfiledialogs PUBLIC ${tinyfiledialogs_SOURCE_DIR})
 set(PROJECT_SOURCES
         main.cpp
         src/open_cycle_time.cpp
-        src/gui_context.cpp)
+        src/gui_context.cpp
+        src/gui_functions.cpp)
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_DEPENDENCIES})

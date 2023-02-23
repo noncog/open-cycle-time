@@ -18,12 +18,15 @@ private:
     struct Algorithms;
     friend struct Algorithms;
     std::string file_name;
-    int frame_rate;
+    std::string save_file;
+    std::string project_path = PROJECT_PATH; // value passed in by CMake
+    float frame_rate;
     int first_frame;
     int last_frame;
     int max_frame;
     int current_frame;
     int prev_frame;
+    int compare_start;
     float video_length;
     GLuint texture;
     cv::Mat frame;
@@ -65,15 +68,23 @@ private:
     bool render_rect;
     bool click_in_rect;
     bool show_results;
+    bool selection_warn;
     std::vector<float> results;
     std::vector<int> peak_indexes;
+    std::vector<float> cycle_times;
     int selected_algo;
+    double cycle_mean;
+    double cycle_var;
+    double cycle_stdev;
+    bool hard_reset;
     // Private functions
     bool typeCheck();
     void resetVariables();
     void showMenuBar();
     void loadFile();
+    void saveFile(std::string out_file);
     void showViewer();
+    void selectionWarn();
     void runComparison(float (*values_getter)(void* data, int idx, cv::Mat* m,
                                               cv::Mat* c));
     void normalizeResults();

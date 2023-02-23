@@ -1,4 +1,5 @@
 #include "gui_functions.h"
+#include <fstream>
 #include <implot.h>
 #include <math.h>
 #include <tinyfiledialogs.h>
@@ -6,12 +7,14 @@
 namespace oct {
 GUIFunctions::GUIFunctions(GLFWwindow* window)
     : file_name("")
+    , save_file("")
     , frame_rate(0)
     , first_frame(1)
     , last_frame(0)
     , max_frame(0)
     , current_frame(1)
     , prev_frame(0)
+    , compare_start(0)
     , video_length(0.0)
     , texture(static_cast<GLuint>(-1))
     // frame
@@ -48,7 +51,12 @@ GUIFunctions::GUIFunctions(GLFWwindow* window)
     , render_rect(false)
     , click_in_rect(false)
     , show_results(false)
-    , selected_algo(0) {}
+    , selection_warn(false)
+    , selected_algo(0)
+    , cycle_mean(0)
+    , cycle_var(0)
+    , cycle_stdev(0)
+    , hard_reset(false) {}
 GUIFunctions::~GUIFunctions() {}
 struct GUIFunctions::Algorithms {
     static float Correlation(void*, int i, cv::Mat* m, cv::Mat* c) {
@@ -181,6 +189,7 @@ struct GUIFunctions::Algorithms {
     }
 };
 void GUIFunctions::mainGUI() {
+
     // Main menu bar
     showMenuBar();
 
@@ -188,7 +197,8 @@ void GUIFunctions::mainGUI() {
     static ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
         | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize
-        | ImGuiWindowFlags_NoSavedSettings;
+        | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav
+        | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar;
 
     // Limit main window to below menu bar
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -203,6 +213,8 @@ void GUIFunctions::mainGUI() {
 
     // Check if should load a file
     loadFile();
+
+    selectionWarn();
 
     // Create tabs layout for the main windows: generator and its output
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
@@ -230,8 +242,28 @@ void GUIFunctions::mainGUI() {
             ImGui::SetNextItemWidth(viewport->Size.x / 2);
             ImGui::SliderInt("##", &current_frame, 1, max_frame, "%d",
                              ImGuiSliderFlags_None);
-            // other buttons and inputs add below here
+
+            // center buttons
+            ImGuiStyle& style = ImGui::GetStyle();
+            float size = 41.0f;
+            float avail = ImGui::GetContentRegionAvail().x;
+            float offset = (avail - size) * 0.5f;
+            if (offset > 0.0f) {
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+            }
+
+            float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+            ImGui::PushButtonRepeat(true);
+            if (ImGui::ArrowButton("##left", ImGuiDir_Left)) {
+                current_frame--;
+            }
+            ImGui::SameLine(0.0f, spacing);
+            if (ImGui::ArrowButton("##right", ImGuiDir_Right)) {
+                current_frame++;
+            }
+            ImGui::PopButtonRepeat();
             ImGui::Separator();
+            // GetItemRectSize()
 
             static int func_type = 0;
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10);
@@ -246,17 +278,29 @@ void GUIFunctions::mainGUI() {
             selected_algo = func_type;
 
             // center the next button
-            ImGuiStyle& style = ImGui::GetStyle();
-            float size =
+            size =
                 ImGui::CalcTextSize("Generate").x + style.FramePadding.x * 2.0f;
-            float avail = ImGui::GetContentRegionAvail().x;
-            float offset = (avail - size) * 0.5f;
+            avail = ImGui::GetContentRegionAvail().x;
+            offset = (avail - size) * 0.5f;
             if (offset > 0.0f) {
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
             }
             // generate button
             if (ImGui::Button("Generate")) {
-                runComparison(func);
+                if (selection_start_pos.x
+                        == viewer_start_pos.x + viewer_center_offset
+                    && selection_start_pos.y == viewer_start_pos.y
+                    && selection_end_pos.x
+                           == viewer_start_pos.x + viewer_center_offset
+                                  + viewer_width
+                    && selection_end_pos.y
+                           == viewer_start_pos.y + viewer_height) {
+                    selection_warn = true;
+                } else {
+                    resetVariables();
+                    compare_start = current_frame;
+                    runComparison(func);
+                }
             }
             if (disable_all) {
                 ImGui::EndDisabled();
@@ -269,6 +313,228 @@ void GUIFunctions::mainGUI() {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Results", &show_results)) {
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10);
+            ImGui::LabelText("##label", "Correlation Data");
+            ImGui::SameLine();
+            static int corr_graph = 0;
+            ImGui::RadioButton("Histogram", &corr_graph, 0);
+            ImGui::SameLine();
+            ImGui::RadioButton("Line Plot", &corr_graph, 1);
+            ImGui::Separator();
+            if (corr_graph == 0) {
+                static ImPlotHistogramFlags
+                    hist_flags; //= ImPlotHistogramFlags_Density;
+                static int bins = 50;
+                static double mu = 5;    // TODO: Remove
+                static double sigma = 2; // TODO: Remove
+                ImGui::SetNextItemWidth(200);
+                if (ImGui::RadioButton("Sqrt", bins == ImPlotBin_Sqrt)) {
+                    bins = ImPlotBin_Sqrt;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("Sturges", bins == ImPlotBin_Sturges)) {
+                    bins = ImPlotBin_Sturges;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("Rice", bins == ImPlotBin_Rice)) {
+                    bins = ImPlotBin_Rice;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("Scott", bins == ImPlotBin_Scott)) {
+                    bins = ImPlotBin_Scott;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("N Bins", bins >= 0)) {
+                    bins = 50;
+                }
+                if (bins >= 0) {
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(200);
+                    ImGui::SliderInt("##Bins", &bins, 1, 100);
+                }
+                ImGui::SameLine();
+
+                static bool range = false;
+                ImGui::Checkbox("Range", &range);
+                static ImVec2 new_range(
+                    *min_element(results.begin(), results.end()),
+                    *max_element(results.begin(), results.end()));
+                if (range) {
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(200);
+                    ImGui::DragFloat2(
+                        "##Range", (float*)&new_range, 0.001f,
+                        *min_element(results.begin(), results.end()),
+                        *max_element(results.begin(), results.end()));
+                }
+                if (ImPlot::BeginPlot("##Histograms")) {
+                    ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_AutoFit,
+                                      ImPlotAxisFlags_AutoFit);
+                    ImPlot::SetNextFillStyle(IMPLOT_AUTO_COL, 0.5f);
+                    ImPlot::PlotHistogram(
+                        "Empirical", results.data(), results.size(), bins, 1.0,
+                        range ? ImPlotRange(new_range.x, new_range.y)
+                              : ImPlotRange(),
+                        hist_flags);
+                    ImPlot::EndPlot();
+                }
+            } else {
+                if (ImPlot::BeginPlot("Line Plots")) {
+                    ImPlot::SetupAxes("Frame", "Correlation", 0,
+                                      ImPlotAxisFlags_AutoFit
+                                          | ImPlotAxisFlags_RangeFit);
+                    ImPlot::SetupAxesLimits(
+                        0, results.size(), 0,
+                        *max_element(results.begin(), results.end()));
+                    ImPlot::SetupAxisLimitsConstraints(ImAxis_X1, 0,
+                                                       results.size());
+                    ImPlot::PlotLine("Correlation", results.data(),
+                                     results.size());
+                    ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle);
+                    ImPlot::PlotInfLines("Matches Frames", peak_indexes.data(),
+                                         peak_indexes.size());
+                    ImPlot::EndPlot();
+                }
+            }
+            ImGui::BeginChild("Filler Window 1",
+                              ImVec2(viewport->Size.x / 6, 0.0f));
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("Information Window",
+                              ImVec2(viewport->Size.x / 6, 0.0f));
+
+            ImGui::LabelText("##label", "Information");
+            ImGui::BulletText(
+                "File: %s",
+                file_name.substr(file_name.find_last_of("/\\") + 1).c_str());
+            ImGui::BulletText("Frames Loaded: %d", max_frame - first_frame);
+            ImGui::BulletText("Length: %.02f seconds", video_length);
+            ImGui::BulletText("Frame Rate: %.02f", frame_rate);
+            ImGui::BulletText("Frames Compared: %d",
+                              last_frame - compare_start);
+            ImGui::BulletText("Frames Matched: %d", (int)peak_indexes.size());
+            ImGui::BulletText("Compare Start: %d", compare_start);
+            ImGui::BulletText("Compare End: %d", last_frame);
+            ImGui::Separator();
+            ImGui::LabelText("##label", "Export");
+            static bool check = false; // TODO: Consider refactor
+            ImGui::Checkbox("Export data?", &check);
+            if (!check) {
+                ImGui::BeginDisabled();
+            }
+            const char* items[] = {"Correlation Data", "Raw Cycle Times",
+                                   "Cycle Times", "Frame Matches"};
+            static int item_current = 0;
+            ImGuiStyle& style = ImGui::GetStyle();
+            float size =
+                ImGui::CalcTextSize("Export").x + style.FramePadding.x * 4;
+            float avail = ImGui::GetContentRegionAvail().x;
+            ImGui::SetNextItemWidth(avail - size);
+            ImGui::Combo("##select-data", &item_current, items,
+                         IM_ARRAYSIZE(items));
+
+            // generate button
+            ImGui::SameLine();
+            if (ImGui::Button("Export")) {
+                // std::cout << "save file: " << save_file << std::endl;
+                std::ofstream saveStream;
+                switch (item_current) {
+                    case 0:
+                        saveFile("/correlation.csv");
+                        // std::cout << save_file << std::endl;
+                        saveStream.open(save_file);
+                        // send the column name
+                        saveStream << "Correlations"
+                                   << "\n";
+
+                        // send data to the stream
+                        for (int i = 0; i < results.size(); ++i) {
+                            saveStream << results.at(i) << "\n";
+                        }
+                        break;
+                    case 1:
+                        saveFile("/raw_cycle_times.csv");
+                        // std::cout << save_file << std::endl;
+                        saveStream.open(save_file);
+                        // send the column name
+                        saveStream << "Raw Cycle Times"
+                                   << "\n";
+
+                        // send data to the stream
+                        for (int i = 0; i < peak_indexes.size(); ++i) {
+                            saveStream << peak_indexes.at(i) / frame_rate
+                                       << "\n";
+                        }
+                        break;
+                    case 2:
+                        saveFile("/cycle_times.csv");
+                        // std::cout << save_file << std::endl;
+                        saveStream.open(save_file);
+                        // send the column name
+                        saveStream << "Cycle Times"
+                                   << "\n";
+
+                        // send data to the stream
+                        for (int i = 0; i < cycle_times.size(); ++i) {
+                            saveStream << cycle_times.at(i) << "\n";
+                        }
+                        break;
+                    case 3:
+                        saveFile("/frame_matches.csv");
+                        // std::cout << save_file << std::endl;
+                        saveStream.open(save_file);
+                        // send the column name
+                        saveStream << "Frame Matches"
+                                   << "\n";
+
+                        // send data to the stream
+                        for (int i = 0; i < peak_indexes.size(); ++i) {
+                            saveStream << peak_indexes.at(i) << "\n";
+                        }
+
+                        break;
+                }
+                // close the file stream
+                saveStream.close();
+            }
+            if (!check) {
+                ImGui::EndDisabled();
+            }
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("Cycle Times Window",
+                              ImVec2(viewport->Size.x / 3, 0.0f));
+            ImGui::LabelText("##label", "Cycle Times");
+            static int bins = ImPlotBin_Sqrt;
+            ImVec2 window_max = ImGui::GetContentRegionAvail();
+            if (ImPlot::BeginPlot("##Histograms",
+                                  ImVec2(window_max.x, window_max.y * 0.75))) {
+                ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_AutoFit,
+                                  ImPlotAxisFlags_AutoFit);
+                ImPlot::SetNextFillStyle(IMPLOT_AUTO_COL, 0.5f);
+                ImPlot::PlotHistogram("Cycle Times", cycle_times.data(),
+                                      cycle_times.size(), bins, 1.0,
+                                      ImPlotRange());
+                ImPlot::EndPlot();
+                ImGui::BulletText("Cycle Count: %d",
+                                  (int)peak_indexes.size() - 1);
+                ImGui::BulletText("Cycle Mean: %.04f seconds", cycle_mean);
+                ImGui::BulletText("Cycle Variance: %.05f seconds", cycle_var);
+                ImGui::BulletText("Cycle Standard Deviation: %.05f seconds",
+                                  cycle_stdev);
+            }
+            ImGui::EndChild();
+            ImGui::SameLine();
+
+            window_max = ImGui::GetContentRegionAvail();
+            ImGui::BeginChild("Data Explorer Window",
+                              ImVec2(viewport->Size.x / 6, 0.0f));
+            // ImGui::LabelText("##label", "Data Explorer");
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("Filler Window 2",
+                              ImVec2(viewport->Size.x / 6, 0.0f));
+            ImGui::EndChild();
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
@@ -299,56 +565,67 @@ bool GUIFunctions::typeCheck() {
     return false;
 }
 void GUIFunctions::resetVariables() {
-    file_name = "";
-    frame_rate = 0;
-    first_frame = 1;
-    last_frame = 0;
-    max_frame = 0;
-    current_frame = 1;
-    prev_frame = 0;
-    video_length = 0.0;
+    if (hard_reset) {
+        file_name = "";
+        save_file = "";
+        frame_rate = 0;
+        first_frame = 1;
+        last_frame = 0;
+        max_frame = 0;
+        current_frame = 1;
+        prev_frame = 0;
+        compare_start = 0;
+        video_length = 0.0;
+        selection = false;
+        viewer_center_offset = 0;
+        viewer_width = 0;  // TODO: Replace
+        viewer_height = 0; // TODO: Replace
+        show_imgui_metrics = false;
+        show_imgui_demo = false;
+        show_implot_metrics = false;
+        show_implot_demo = false;
+        show_load_dialog = false;
+        skip_load_file = false;
+        show_load_error = false;
+        skip_loader_check = false;
+        skip_get_size = false;
+        show_video_size = false;
+        right_type = false;
+        load_full = false;
+        load_portion = false;
+        ready_load_portion = false;
+        show_viewer = false;
+        disable_all = true;
+        render_rect = false;
+        click_in_rect = false;
+        show_results = false;
+        selection_warn = false;
+        selected_algo = 0;
+        frames.clear();
+        hard_reset = false;
+    }
     // texture //TODO: Clear
     // frame //TODO: Clear
     // sub_image //TODO: Clear
-    frames.clear();
     // viewer_start_pos
     // viewer_size
     // selection_start_pos
     // selection_end_pos
     // viewport_center
-    viewer_center_offset = 0;
-    selection = false;
-    viewer_width = 0;  // TODO: Replace
-    viewer_height = 0; // TODO: Replace
     // window // ignore
-    show_imgui_metrics = false;
-    show_imgui_demo = false;
-    show_implot_metrics = false;
-    show_implot_demo = false;
-    show_load_dialog = false;
-    skip_load_file = false;
-    show_load_error = false;
-    skip_loader_check = false;
-    skip_get_size = false;
-    show_video_size = false;
-    right_type = false;
-    load_full = false;
-    load_portion = false;
-    ready_load_portion = false;
-    show_viewer = false;
-    disable_all = true;
-    render_rect = false;
-    click_in_rect = false;
-    show_results = false;
-    selected_algo = 0;
     results.clear();
     peak_indexes.clear();
+    cycle_times.clear();
+    cycle_mean = 0;
+    cycle_var = 0;
+    cycle_stdev = 0;
 }
 void GUIFunctions::showMenuBar() {
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open", nullptr)) {
                 // Reset all loader variables when loading a new video
+                hard_reset = true;
                 resetVariables();
 
                 // Get a video file directory/name------------------------------
@@ -356,9 +633,9 @@ void GUIFunctions::showMenuBar() {
                 // Limit file types
                 char const* lFilterPatterns[3] = {"*.mp4", "*.avi", "*.mov"};
                 // Create open dialog
-                lTheOpenFileName =
-                    tinyfd_openFileDialog("Select a Video File", "", 3,
-                                          lFilterPatterns, "Video files", 0);
+                lTheOpenFileName = tinyfd_openFileDialog(
+                    "Select a Video File", (project_path.append("/")).c_str(),
+                    3, lFilterPatterns, "Video files", 0);
                 // Check if could open file
                 if (!lTheOpenFileName) {
                     tinyfd_messageBox("Error", "File name is empty.", "ok",
@@ -559,6 +836,30 @@ void GUIFunctions::loadFile() {
         }
     }
 }
+void GUIFunctions::saveFile(std::string out_file) {
+    // reset save file for each time loading a new one
+    // save_file = "";
+    // get data file directory/name
+    const char* lTheSaveFileName;
+    // create a filter for file types
+    char const* lFilterPatterns[1] = {"*.csv"};
+
+    // local copy of project_path + file and ending
+    std::string local_save_path = project_path;
+
+    // create save dialog
+    lTheSaveFileName = tinyfd_saveFileDialog(
+        "Save Location?", (local_save_path.append(out_file)).c_str(), 1,
+        lFilterPatterns, NULL);
+
+    // check if not valid destination/name
+    if (!lTheSaveFileName) {
+        tinyfd_messageBox("Error", "Save file name is empty", "ok", "error",
+                          1); // TODO: Make sure 1 or 0
+    } else {
+        save_file = lTheSaveFileName;
+    }
+}
 void GUIFunctions::showViewer() {
     if (show_viewer) {
         // If we don't have a texture, make it, otherwise just show it.
@@ -648,6 +949,28 @@ void GUIFunctions::showViewer() {
         }
     }
 }
+void GUIFunctions::selectionWarn() {
+    if (selection_warn) {
+        ImGui::OpenPopup("Error: No selection!");
+        ImGui::SetNextWindowPos(viewport_center, ImGuiCond_Appearing,
+                                ImVec2(0.5f, 0.5f));
+        if (ImGui::BeginPopupModal("Error: No selection!", NULL,
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Please select a portion of the video to "
+                        "compare.\nThis software is meant to compare a region "
+                        "of the video frame.\nIt is unlikely you will get good "
+                        "results comparing whole frames.\nTo do it anyway, "
+                        "select a large region of the frame.");
+            ImGui::Separator();
+            // ImGui::PopStyleVar();
+            if (ImGui::Button("OK", ImVec2(120, 0))) {
+                selection_warn = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }
+}
 void GUIFunctions::runComparison(float (*values_getter)(void* data, int idx,
                                                         cv::Mat* m,
                                                         cv::Mat* c)) {
@@ -685,14 +1008,14 @@ void GUIFunctions::runComparison(float (*values_getter)(void* data, int idx,
     // then do the opencv crop
     cv::Range rows(row_start, row_end);
     cv::Range cols(col_start, col_end);
-    sub_image = frames[current_frame](rows, cols);
+    sub_image = frames[compare_start](rows, cols);
 
     // convert the sub image to hsv for comparison
     cv::Mat hsv_sub_image;
     cvtColor(sub_image, hsv_sub_image, cv::COLOR_BGR2HSV);
 
     // run the frame comparison for the selected algorithm
-    for (int i = current_frame; i < last_frame; i++) {
+    for (int i = compare_start; i < last_frame; i++) {
         // create the comparison image
         cv::Mat compare_image = frames[i](rows, cols);
         // convert to hsv
@@ -735,10 +1058,24 @@ void GUIFunctions::normalizeResults() {
             }
         }
     }
-
-    for (int i = 0; i < peak_indexes.size(); i++) {
-        std::cout << peak_indexes[i] + current_frame << std::endl;
+    for (int i = 0; i < peak_indexes.size() - 1; i++) {
+        cycle_times.push_back((peak_indexes[i + 1] - peak_indexes[i])
+                              / frame_rate);
+        cycle_mean += cycle_times[i];
+        // std::cout << peak_indexes[i] + current_frame << std::endl;
+        // std::cout << cycle_times[i] << std::endl;
     }
+    // std::cout << "cycle times: " << cycle_times.size() << std::endl;
+    cycle_mean = cycle_mean / cycle_times.size();
+    // std::cout << "cycle mean: " << cycle_mean << std::endl;
+    double numerator = 0;
+    for (int i = 0; i < cycle_times.size(); i++) {
+        numerator += pow(cycle_times[i] - cycle_mean, 2);
+    }
+    cycle_var = numerator / (cycle_times.size() - 1);
+    // std::cout << "cycle var: " << cycle_var << std::endl;
+    cycle_stdev = sqrt(cycle_var);
+    // std::cout << "cycle stdev: " << cycle_stdev << std::endl;
 
     show_results = true;
 }

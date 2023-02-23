@@ -1,5 +1,6 @@
 #include "gui_functions.h"
 #include <implot.h>
+#include <math.h>
 #include <tinyfiledialogs.h>
 
 namespace oct {
@@ -22,8 +23,8 @@ GUIFunctions::GUIFunctions(GLFWwindow* window)
     // selection_end_pos
     // viewport_center
     , viewer_center_offset(0)
-    , viewer_width(0)  // to be replaced
-    , viewer_height(0) // to be replaced
+    , viewer_width(0)  // TODO: to be replaced
+    , viewer_height(0) // TODO: to be replaced
     , selection(false)
     , window(window)
     , show_imgui_metrics(false)
@@ -43,11 +44,55 @@ GUIFunctions::GUIFunctions(GLFWwindow* window)
     , load_portion(false)
     , ready_load_portion(false)
     , show_viewer(false)
-    , disable_all(false)
+    , disable_all(true)
     , render_rect(false)
     , click_in_rect(false)
-    , results(false) {}
+    , show_results(false)
+    , selected_algo(0) {}
 GUIFunctions::~GUIFunctions() {}
+struct GUIFunctions::Algorithms {
+    static float Correlation(void*, int i, cv::Mat* m, cv::Mat* c) {
+        // TODO: put elsewhere eventually
+        int h_bins = 50, s_bins = 60;
+        int histSize[] = {h_bins, s_bins};
+
+        // These can stay the same but may want variable bins
+        // hue varies from 0 to 179, saturation from 0 to 255
+        float h_ranges[] = {0, 180};
+        float s_ranges[] = {0, 256};
+        const float* ranges[] = {h_ranges, s_ranges};
+        // Use the 0-th and 1-st channels
+        int channels[] = {0, 1};
+
+        cv::Mat hist_sub;
+        cv::Mat hist_compare;
+
+        // find histogram of sub image
+        calcHist(m, 1, channels, cv::Mat(), hist_sub, 2, histSize, ranges, true,
+                 false);
+        normalize(hist_sub, hist_sub, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+        // find histogram of compare image
+        calcHist(c, 1, channels, cv::Mat(), hist_compare, 2, histSize, ranges,
+                 true, false);
+        normalize(hist_compare, hist_compare, 0, 1, cv::NORM_MINMAX, -1,
+                  cv::Mat());
+
+        // 4 separate compare methods 0-3 or 4 idk
+        float comparison =
+            compareHist(hist_sub, hist_compare, cv::HISTCMP_CORREL);
+
+        return comparison;
+    }
+    static float Chisquare(void*, int i, cv::Mat* m, cv::Mat* c) {
+        return (i * 2);
+    }
+    static float Intersection(void*, int i, cv::Mat* m, cv::Mat* c) {
+        return (i * -1);
+    }
+    static float Bhattacharyya(void*, int i, cv::Mat* m, cv::Mat* c) {
+        return (i * 100);
+    }
+};
 void GUIFunctions::mainGUI() {
     // Main menu bar
     showMenuBar();
@@ -100,6 +145,19 @@ void GUIFunctions::mainGUI() {
                              ImGuiSliderFlags_None);
             // other buttons and inputs add below here
             ImGui::Separator();
+
+            static int func_type = 0;
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10);
+            ImGui::Combo(
+                "Algorithm", &func_type,
+                "Correlation\0Chi-square\0Intersection\0Bhattacharyya\0");
+            float (*func)(void*, int, cv::Mat*, cv::Mat*) =
+                (func_type == 0)   ? Algorithms::Correlation
+                : (func_type == 1) ? Algorithms::Chisquare
+                : (func_type == 2) ? Algorithms::Intersection
+                                   : Algorithms::Bhattacharyya;
+            selected_algo = func_type;
+
             // center the next button
             ImGuiStyle& style = ImGui::GetStyle();
             float size =
@@ -111,7 +169,7 @@ void GUIFunctions::mainGUI() {
             }
             // generate button
             if (ImGui::Button("Generate")) {
-                runComparison();
+                runComparison(func);
             }
             if (disable_all) {
                 ImGui::EndDisabled();
@@ -123,7 +181,7 @@ void GUIFunctions::mainGUI() {
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Results", &results)) {
+        if (ImGui::BeginTabItem("Results", &show_results)) {
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
@@ -194,7 +252,10 @@ void GUIFunctions::resetVariables() {
     disable_all = true;
     render_rect = false;
     click_in_rect = false;
-    results = false;
+    show_results = false;
+    selected_algo = 0;
+    results.clear();
+    peak_indexes.clear();
 }
 void GUIFunctions::showMenuBar() {
     if (ImGui::BeginMainMenuBar()) {
@@ -500,16 +561,15 @@ void GUIFunctions::showViewer() {
         }
     }
 }
-void GUIFunctions::runComparison() {
+void GUIFunctions::runComparison(float (*values_getter)(void* data, int idx,
+                                                        cv::Mat* m,
+                                                        cv::Mat* c)) {
     // Get selection region scaled correctly to compare against original frames
     float scale_factor = (float)frames[0].cols / (float)viewer_width;
     // normalize values of frame's region to be upper left to bottom right
     // regardless of how the user selected, e.g. bottom right to top left
     // TODO: simplify these calculations later..
-    int row_start;
-    int row_end;
-    int col_start;
-    int col_end;
+    int row_start, row_end, col_start, col_end;
     if (selection_end_pos.y < selection_start_pos.y) {
         row_start = selection_end_pos.y;
         row_end = selection_start_pos.y;
@@ -524,32 +584,67 @@ void GUIFunctions::runComparison() {
         col_start = selection_start_pos.x;
         col_end = selection_end_pos.x;
     }
-    // with the above values correct, I can now remove offset of their
-    // coordinates since these are relative to the frame viewer position
-    // in the main window, which is centered.
+    // remove offset from centered viewer position
     row_start = row_start - viewer_start_pos.y;
     row_end = row_end - viewer_start_pos.y;
     col_start = col_start - viewer_start_pos.x - viewer_center_offset;
     col_end = col_end - viewer_start_pos.x - viewer_center_offset;
-    // then scale up to real res.
+    // then scale up to real resolution
     row_start = row_start * scale_factor;
     row_end = row_end * scale_factor;
     col_start = col_start * scale_factor;
     col_end = col_end * scale_factor;
 
-    // then do the opencv crop and show the image.
+    // then do the opencv crop
     cv::Range rows(row_start, row_end);
     cv::Range cols(col_start, col_end);
     sub_image = frames[current_frame](rows, cols);
 
-    // test function to visually check correct size
-    // cv::namedWindow("Image Viewer");
-    // cv::imshow("Image Viewer", sub_image);
+    // convert the sub image to hsv for comparison
+    cv::Mat hsv_sub_image;
+    cvtColor(sub_image, hsv_sub_image, cv::COLOR_BGR2HSV);
 
-    // for loop comparison of frames to selected region
-    // for now just run to last frame or max frame.
-    // add slider later to change which value this is. use last frame.
+    // TODO: slider to change last frame
+    // TODO: initialize arguments to calculate histograms
 
-    results = true;
+    // run the frame comparison for the selected algorithm
+    for (int i = current_frame; i < last_frame; i++) {
+        // create the comparison image
+        cv::Mat compare_image = frames[i](rows, cols);
+        // convert to hsv
+        cv::Mat hsv_compare_image;
+        cvtColor(compare_image, hsv_compare_image, cv::COLOR_BGR2HSV);
+        // run comparison
+        const float v =
+            values_getter(nullptr, i, &hsv_sub_image, &hsv_compare_image);
+        results.push_back(v);
+        // release image data before next loop to ensure no overlap
+        compare_image.release();
+        hsv_compare_image.release();
+    }
+    // find the frame indexes of the cycles
+    if (selected_algo == 0) {
+        for (int i = 1; i < results.size(); i++) {
+            // TODO: Extend this to include the case of extended peaks + l/r
+            // TODO: Decide what to do about constants, adjustable or not?
+            if (results[i] > 0.95
+                && (results[i] > results[i - 1]
+                    && results[i] > results[i + 1])) {
+                peak_indexes.push_back(i);
+            }
+        }
+    }
+    for (int i = 0; i < peak_indexes.size(); i++) {
+        std::cout << peak_indexes[i] + current_frame << std::endl;
+    }
+    // TODO: This value is hard coded for all types of tests, change that.
+    // TODO: Add no resize and no scroll to the windows.
+    // TODO: Add other algorithms
+    // TODO: Add other results processing
+    // TODO: Decide on how to represent the results now that we have found them
+    // TODO: Export results ability
+    // TODO: Make controls window wider
+    // TODO: Ensure generating new values resets system safely
+    show_results = true;
 }
 } // namespace oct

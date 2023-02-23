@@ -76,6 +76,7 @@ private:
     void showViewer();
     void runComparison(float (*values_getter)(void* data, int idx, cv::Mat* m,
                                               cv::Mat* c));
+    void normalizeResults();
 };
 } // namespace oct
 

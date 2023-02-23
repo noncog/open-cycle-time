@@ -83,14 +83,101 @@ struct GUIFunctions::Algorithms {
 
         return comparison;
     }
-    static float Chisquare(void*, int i, cv::Mat* m, cv::Mat* c) {
-        return (i * 2);
-    }
     static float Intersection(void*, int i, cv::Mat* m, cv::Mat* c) {
-        return (i * -1);
+        // TODO: put elsewhere eventually
+        int h_bins = 50, s_bins = 60;
+        int histSize[] = {h_bins, s_bins};
+
+        // These can stay the same but may want variable bins
+        // hue varies from 0 to 179, saturation from 0 to 255
+        float h_ranges[] = {0, 180};
+        float s_ranges[] = {0, 256};
+        const float* ranges[] = {h_ranges, s_ranges};
+        // Use the 0-th and 1-st channels
+        int channels[] = {0, 1};
+
+        cv::Mat hist_sub;
+        cv::Mat hist_compare;
+
+        // find histogram of sub image
+        calcHist(m, 1, channels, cv::Mat(), hist_sub, 2, histSize, ranges, true,
+                 false);
+        normalize(hist_sub, hist_sub, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+        // find histogram of compare image
+        calcHist(c, 1, channels, cv::Mat(), hist_compare, 2, histSize, ranges,
+                 true, false);
+        normalize(hist_compare, hist_compare, 0, 1, cv::NORM_MINMAX, -1,
+                  cv::Mat());
+
+        // 4 separate compare methods 0-3 or 4 idk
+        float comparison =
+            compareHist(hist_sub, hist_compare, cv::HISTCMP_INTERSECT);
+
+        return comparison;
+    }
+    static float Chisquare(void*, int i, cv::Mat* m, cv::Mat* c) {
+        // TODO: put elsewhere eventually
+        int h_bins = 50, s_bins = 60;
+        int histSize[] = {h_bins, s_bins};
+
+        // These can stay the same but may want variable bins
+        // hue varies from 0 to 179, saturation from 0 to 255
+        float h_ranges[] = {0, 180};
+        float s_ranges[] = {0, 256};
+        const float* ranges[] = {h_ranges, s_ranges};
+        // Use the 0-th and 1-st channels
+        int channels[] = {0, 1};
+
+        cv::Mat hist_sub;
+        cv::Mat hist_compare;
+
+        // find histogram of sub image
+        calcHist(m, 1, channels, cv::Mat(), hist_sub, 2, histSize, ranges, true,
+                 false);
+        normalize(hist_sub, hist_sub, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+        // find histogram of compare image
+        calcHist(c, 1, channels, cv::Mat(), hist_compare, 2, histSize, ranges,
+                 true, false);
+        normalize(hist_compare, hist_compare, 0, 1, cv::NORM_MINMAX, -1,
+                  cv::Mat());
+
+        // 4 separate compare methods 0-3 or 4 idk
+        float comparison =
+            compareHist(hist_sub, hist_compare, cv::HISTCMP_CHISQR);
+
+        return comparison;
     }
     static float Bhattacharyya(void*, int i, cv::Mat* m, cv::Mat* c) {
-        return (i * 100);
+        // TODO: put elsewhere eventually
+        int h_bins = 50, s_bins = 60;
+        int histSize[] = {h_bins, s_bins};
+
+        // These can stay the same but may want variable bins
+        // hue varies from 0 to 179, saturation from 0 to 255
+        float h_ranges[] = {0, 180};
+        float s_ranges[] = {0, 256};
+        const float* ranges[] = {h_ranges, s_ranges};
+        // Use the 0-th and 1-st channels
+        int channels[] = {0, 1};
+
+        cv::Mat hist_sub;
+        cv::Mat hist_compare;
+
+        // find histogram of sub image
+        calcHist(m, 1, channels, cv::Mat(), hist_sub, 2, histSize, ranges, true,
+                 false);
+        normalize(hist_sub, hist_sub, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+        // find histogram of compare image
+        calcHist(c, 1, channels, cv::Mat(), hist_compare, 2, histSize, ranges,
+                 true, false);
+        normalize(hist_compare, hist_compare, 0, 1, cv::NORM_MINMAX, -1,
+                  cv::Mat());
+
+        // 4 separate compare methods 0-3 or 4 idk
+        float comparison =
+            compareHist(hist_sub, hist_compare, cv::HISTCMP_BHATTACHARYYA);
+
+        return comparison;
     }
 };
 void GUIFunctions::mainGUI() {
@@ -132,15 +219,15 @@ void GUIFunctions::mainGUI() {
             ImGui::Separator();
             // Show the controls
             ImGui::BeginChild("Filler Window 1",
-                              ImVec2(viewport->Size.x / 3, 0.0f));
+                              ImVec2(viewport->Size.x / 4, 0.0f));
             ImGui::EndChild();
             ImGui::SameLine();
             ImGui::BeginChild("Controls Window",
-                              ImVec2(viewport->Size.x / 3, 0.0f));
+                              ImVec2(viewport->Size.x / 2, 0.0f));
             if (disable_all) {
                 ImGui::BeginDisabled();
             }
-            ImGui::SetNextItemWidth(viewport->Size.x / 3);
+            ImGui::SetNextItemWidth(viewport->Size.x / 2);
             ImGui::SliderInt("##", &current_frame, 1, max_frame, "%d",
                              ImGuiSliderFlags_None);
             // other buttons and inputs add below here
@@ -150,11 +237,11 @@ void GUIFunctions::mainGUI() {
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10);
             ImGui::Combo(
                 "Algorithm", &func_type,
-                "Correlation\0Chi-square\0Intersection\0Bhattacharyya\0");
+                "Correlation\0Intersection\0Chi-square\0Bhattacharyya\0");
             float (*func)(void*, int, cv::Mat*, cv::Mat*) =
                 (func_type == 0)   ? Algorithms::Correlation
-                : (func_type == 1) ? Algorithms::Chisquare
-                : (func_type == 2) ? Algorithms::Intersection
+                : (func_type == 1) ? Algorithms::Intersection
+                : (func_type == 2) ? Algorithms::Chisquare
                                    : Algorithms::Bhattacharyya;
             selected_algo = func_type;
 
@@ -177,7 +264,7 @@ void GUIFunctions::mainGUI() {
             ImGui::EndChild();
             ImGui::SameLine();
             ImGui::BeginChild("Filler Window 2",
-                              ImVec2(viewport->Size.x / 3, 0.0f));
+                              ImVec2(viewport->Size.x / 4, 0.0f));
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
@@ -604,9 +691,6 @@ void GUIFunctions::runComparison(float (*values_getter)(void* data, int idx,
     cv::Mat hsv_sub_image;
     cvtColor(sub_image, hsv_sub_image, cv::COLOR_BGR2HSV);
 
-    // TODO: slider to change last frame
-    // TODO: initialize arguments to calculate histograms
-
     // run the frame comparison for the selected algorithm
     for (int i = current_frame; i < last_frame; i++) {
         // create the comparison image
@@ -622,29 +706,40 @@ void GUIFunctions::runComparison(float (*values_getter)(void* data, int idx,
         compare_image.release();
         hsv_compare_image.release();
     }
+    normalizeResults();
+}
+
+void GUIFunctions::normalizeResults() {
+    // TODO: Extend this to include the case of extended peaks + l/r
+    // TODO: Decide what to do about constants, adjustable or not?
     // find the frame indexes of the cycles
-    if (selected_algo == 0) {
-        for (int i = 1; i < results.size(); i++) {
-            // TODO: Extend this to include the case of extended peaks + l/r
-            // TODO: Decide what to do about constants, adjustable or not?
-            if (results[i] > 0.95
-                && (results[i] > results[i - 1]
-                    && results[i] > results[i + 1])) {
+    for (int i = 0; i < results.size(); i++) {
+        if (selected_algo == 0 && results[i] > 0.95
+            && (results[i] > results[i - 1] && results[i] > results[i + 1])) {
+            peak_indexes.push_back(i);
+        } else if (selected_algo == 1 && results[i] > 20.0
+                   && (results[i] > results[i - 1]
+                       && results[i] > results[i + 1])) {
+            peak_indexes.push_back(i);
+        } else if (selected_algo == 2 && results[i] < 5.0
+                   && (results[i] < results[i - 1]
+                       && results[i] < results[i + 1])) {
+            if (results[i] < results[i - 2] && results[i] < results[i + 2]) {
+                peak_indexes.push_back(i);
+            }
+        } else if (selected_algo == 3 && results[i] < 0.2
+                   && (results[i] < results[i - 1]
+                       && results[i] < results[i + 1])) {
+            if (results[i] < results[i - 2] && results[i] < results[i + 2]) {
                 peak_indexes.push_back(i);
             }
         }
     }
+
     for (int i = 0; i < peak_indexes.size(); i++) {
         std::cout << peak_indexes[i] + current_frame << std::endl;
     }
-    // TODO: This value is hard coded for all types of tests, change that.
-    // TODO: Add no resize and no scroll to the windows.
-    // TODO: Add other algorithms
-    // TODO: Add other results processing
-    // TODO: Decide on how to represent the results now that we have found them
-    // TODO: Export results ability
-    // TODO: Make controls window wider
-    // TODO: Ensure generating new values resets system safely
+
     show_results = true;
 }
 } // namespace oct

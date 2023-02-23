@@ -15,6 +15,8 @@ public:
     void mainGUI();
 
 private:
+    struct Algorithms;
+    friend struct Algorithms;
     std::string file_name;
     int frame_rate;
     int first_frame;
@@ -62,14 +64,18 @@ private:
     bool disable_all;
     bool render_rect;
     bool click_in_rect;
-    bool results;
+    bool show_results;
+    std::vector<float> results;
+    std::vector<int> peak_indexes;
+    int selected_algo;
     // Private functions
     bool typeCheck();
     void resetVariables();
     void showMenuBar();
     void loadFile();
     void showViewer();
-    void runComparison();
+    void runComparison(float (*values_getter)(void* data, int idx, cv::Mat* m,
+                                              cv::Mat* c));
 };
 } // namespace oct
 

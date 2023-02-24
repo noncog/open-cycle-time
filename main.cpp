@@ -1,6 +1,9 @@
-#include <iostream>
+#include "open_cycle_time.h"
 
 int main() {
-    std::cout << "Hello, World!" << std::endl;
+    oct::OpenCycleTime open_cycle_time("Open Cycle Time", 1280, 720);
+    while (open_cycle_time.isActive()) {
+        open_cycle_time.loop();
+    }
     return 0;
 }
